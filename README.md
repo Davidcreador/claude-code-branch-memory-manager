@@ -255,6 +255,41 @@ cd /path/to/your/repo
 branch-memory status
 ```
 
+## 🗑️ Uninstallation
+
+### Complete Removal
+```bash
+# Download and run the uninstaller
+curl -fsSL https://raw.githubusercontent.com/Davidcreador/claude-code-branch-memory-manager/main/uninstall.sh | bash
+```
+
+### Manual Uninstallation
+```bash
+# Clone the repository if not already present
+git clone https://github.com/Davidcreador/claude-code-branch-memory-manager.git
+cd claude-code-branch-memory-manager
+./uninstall.sh
+```
+
+### Uninstall Options
+- **Interactive mode** (default): Confirms each step and offers to backup memories
+- **Force mode**: Skip all confirmations
+  ```bash
+  ./uninstall.sh --force
+  ```
+- **What gets removed**:
+  - The `branch-memory` command from `~/bin`
+  - Git hooks from all repositories
+  - Git template configuration
+  - Installation directory (`~/.claude-memory`)
+  - Optionally: Memory directories from repositories
+
+### Backup Before Uninstalling
+The uninstaller will offer to backup your memory files before removal. Backups are saved to:
+```
+~/.claude-memory-backup-YYYYMMDD-HHMMSS/
+```
+
 ## 🎛️ Configuration
 
 ### Works Perfectly With Defaults
