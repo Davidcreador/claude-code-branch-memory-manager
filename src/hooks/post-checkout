@@ -1,0 +1,172 @@
+#!/bin/bash
+# Claude Code Branch Memory Manager - Post Checkout Hook
+# Professional git hook with comprehensive error handling and logging
+
+# Hook metadata
+HOOK_NAME="post-checkout"
+HOOK_VERSION="2.0.0"
+HOOK_DESCRIPTION="Automatically switches CLAUDE.md files when changing branches"
+
+# Exit early if this is not a branch checkout
+if [[ "${3:-}" != "1" ]]; then
+    exit 0
+fi
+
+# Exit early if hooks are disabled
+if [[ "${CLAUDE_MEMORY_DISABLE_HOOKS:-}" == "1" ]]; then
+    exit 0
+fi
+
+# Source the Claude Memory Manager libraries
+CLAUDE_MEMORY_HOME="${HOME}/.claude-memory"
+if [[ ! -d "$CLAUDE_MEMORY_HOME" ]]; then
+    echo "Warning: Claude Memory Manager not found at $CLAUDE_MEMORY_HOME" >&2
+    exit 0
+fi
+
+# Source libraries with error handling
+for lib in logger config git-utils core errors; do
+    lib_file="$CLAUDE_MEMORY_HOME/lib/${lib}.sh"
+    if [[ -f "$lib_file" ]]; then
+        # shellcheck source=/dev/null
+        source "$lib_file"
+    else
+        echo "Warning: Library not found: $lib_file" >&2
+        exit 0
+    fi
+done
+
+# Initialize error context
+set_error_context "hook" "$HOOK_NAME"
+set_error_context "hook_version" "$HOOK_VERSION"
+
+# Main hook execution
+main() {
+    local old_commit="$1"
+    local new_commit="$2"
+    local is_branch_checkout="$3"
+    local component="post-checkout"
+    
+    # Performance timing
+    local start_time
+    start_time=$(date +%s%3N)
+    
+    log_info "Post-checkout hook triggered" "$component"
+    log_debug "Hook parameters: old=$old_commit new=$new_commit branch_checkout=$is_branch_checkout" "$component"
+    
+    # Validate environment
+    if ! validate_git_repo "$component"; then
+        log_error "Hook running outside git repository" "$component"
+        exit 0
+    fi
+    
+    # Check if hooks are enabled in configuration
+    if [[ "$(get_config_bool "enable_hooks")" != "true" ]]; then
+        log_debug "Hooks are disabled in configuration" "$component"
+        exit 0
+    fi
+    
+    # Get branch information
+    local current_branch
+    current_branch=$(get_current_branch "$component")
+    
+    if [[ "$current_branch" == "detached-head" ]]; then
+        log_info "In detached HEAD state, skipping memory management" "$component"
+        exit 0
+    fi
+    
+    if [[ "$current_branch" == "unknown" ]]; then
+        log_warn "Could not determine current branch, skipping memory management" "$component"
+        exit 0
+    fi
+    
+    set_error_context "current_branch" "$current_branch"
+    
+    # Get previous branch
+    local previous_branch
+    previous_branch=$(get_previous_branch "$component")
+    set_error_context "previous_branch" "$previous_branch"
+    
+    log_info "Branch checkout: $previous_branch → $current_branch" "$component"
+    
+    # Save previous branch memory if configured
+    if [[ "$(get_config_bool "auto_save_on_checkout")" == "true" && "$previous_branch" != "unknown" ]]; then
+        local current_memory
+        current_memory=$(get_current_memory_file)
+        
+        if [[ -f "$current_memory" && -s "$current_memory" ]]; then
+            log_info "Auto-saving memory for previous branch: $previous_branch" "$component"
+            
+            # Use safe operation with rollback
+            safe_operation "save_previous_memory" \
+                "log_warn 'Failed to save previous branch memory' '$component'" \
+                save_branch_memory "$previous_branch" "Auto-saved on checkout to $current_branch"
+        fi
+    fi
+    
+    # Switch to new branch memory context
+    log_info "Loading memory context for branch: $current_branch" "$component"
+    
+    safe_operation "switch_memory_context" \
+        "log_warn 'Failed to switch memory context' '$component'" \
+        switch_memory_context "$current_branch" false
+    
+    # Log performance metrics
+    local end_time
+    end_time=$(date +%s%3N)
+    local duration=$((end_time - start_time))
+    
+    if [[ "$(get_config_bool "enable_performance_logging")" == "true" ]]; then
+        log_perf "post-checkout" "$duration" "$component"
+    fi
+    
+    log_info "Post-checkout hook completed successfully" "$component"
+    
+    # Log event for monitoring
+    local event_data
+    event_data=$(printf '{"previous_branch":"%s","current_branch":"%s","duration_ms":%d}' \
+        "$previous_branch" "$current_branch" "$duration")
+    log_event "branch_checkout" "$event_data" "$component"
+    
+    exit 0
+}
+
+# Error handling wrapper
+execute_with_error_handling() {
+    # Set up error context
+    set_error_context "pwd" "$(pwd)"
+    set_error_context "user" "${USER:-unknown}"
+    set_error_context "timestamp" "$(date '+%Y-%m-%d %H:%M:%S')"
+    
+    # Execute main function with error handling
+    if ! main "$@"; then
+        log_error "Post-checkout hook failed" "post-checkout"
+        
+        # Create error report in debug mode
+        if [[ "$(get_config_bool "debug_enabled")" == "true" ]]; then
+            local error_report
+            error_report=$(create_error_report)
+            log_error "Error report created: $error_report" "post-checkout"
+        fi
+        
+        # Don't fail the git operation, just log the error
+        exit 0
+    fi
+}
+
+# Hook timeout handling
+timeout_handler() {
+    log_error "Post-checkout hook timed out" "post-checkout"
+    exit 0
+}
+
+# Set up timeout
+HOOK_TIMEOUT=$(get_config_int "hook_timeout" 30)
+trap timeout_handler ALRM
+if command -v timeout &>/dev/null; then
+    # Use timeout command if available
+    timeout "$HOOK_TIMEOUT" bash -c "execute_with_error_handling '$1' '$2' '$3'"
+else
+    # Fallback without timeout
+    execute_with_error_handling "$1" "$2" "$3"
+fi

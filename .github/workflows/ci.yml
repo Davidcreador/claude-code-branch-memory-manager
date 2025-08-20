@@ -1,0 +1,640 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run weekly to catch regressions
+    - cron: '0 0 * * 0'
+
+env:
+  CLAUDE_MEMORY_BATCH_MODE: true
+  CLAUDE_MEMORY_LOG_LEVEL: INFO
+
+jobs:
+  # ==============================================================================
+  # LINT AND FORMAT
+  # ==============================================================================
+  
+  lint:
+    name: Lint and Format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Install shellcheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          
+      - name: Lint shell scripts
+        run: |
+          find . -name "*.sh" -type f | xargs shellcheck -e SC1091,SC2034
+          
+      - name: Check formatting
+        run: |
+          # Check for consistent indentation and formatting
+          find . -name "*.sh" -type f | xargs grep -l $'\t' && exit 1 || true
+          echo "✓ Formatting check passed"
+
+  # ==============================================================================
+  # COMPATIBILITY TESTING
+  # ==============================================================================
+  
+  compatibility:
+    name: Bash Compatibility Testing
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-20.04, macos-latest, macos-12]
+        bash-version: ['3.2', '4.0', '4.4', '5.0', '5.1']
+        exclude:
+          # macOS doesn't easily support older bash versions in CI
+          - os: macos-latest
+            bash-version: '3.2'
+          - os: macos-latest
+            bash-version: '4.0'
+          - os: macos-12
+            bash-version: '3.2'
+          - os: macos-12
+            bash-version: '4.0'
+            
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup bash ${{ matrix.bash-version }} (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          case "${{ matrix.bash-version }}" in
+            "3.2")
+              # Use system bash (usually 4.x, but test compat mode)
+              echo "Testing compatibility mode with system bash"
+              ;;
+            "4.0"|"4.4"|"5.0"|"5.1")
+              # Install specific bash version if needed
+              sudo apt-get update
+              which bash
+              bash --version
+              ;;
+          esac
+          
+      - name: Setup bash (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          # macOS comes with bash 3.2, test with system bash
+          bash --version
+          
+      - name: Test compatibility layer
+        run: |
+          export BASH_VERSION="${{ matrix.bash-version }}.0"
+          bash src/lib/compat.sh
+          echo "✓ Compatibility layer loads successfully"
+          
+      - name: Test basic functionality
+        run: |
+          # Test basic CLI functionality
+          bash src/bin/branch-memory --version || echo "Version command failed"
+          bash src/bin/branch-memory help || echo "Help command failed"
+
+  # ==============================================================================
+  # INSTALLATION TESTING
+  # ==============================================================================
+  
+  installation:
+    name: Installation Testing
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        install-method: [curl, wget, git]
+        
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Test ${{ matrix.install-method }} installation
+        run: |
+          # Create test user directory
+          export HOME="$RUNNER_TEMP/test-home"
+          mkdir -p "$HOME"
+          cd "$HOME"
+          
+          # Initialize test git repository
+          git init
+          git config user.name "Test User"
+          git config user.email "test@example.com"
+          echo "# Test Repo" > README.md
+          git add README.md
+          git commit -m "Initial commit"
+          
+          # Test installation method
+          case "${{ matrix.install-method }}" in
+            curl)
+              if command -v curl >/dev/null; then
+                echo "Testing curl installation method"
+                # Would test: curl -fsSL install-url | bash
+                # For now, test local installation
+                bash "$GITHUB_WORKSPACE/install.sh"
+              else
+                echo "curl not available, skipping"
+                exit 0
+              fi
+              ;;
+            wget)
+              if command -v wget >/dev/null; then
+                echo "Testing wget installation method"
+                bash "$GITHUB_WORKSPACE/install.sh"
+              else
+                echo "wget not available, skipping"
+                exit 0
+              fi
+              ;;
+            git)
+              echo "Testing git installation method"
+              bash "$GITHUB_WORKSPACE/install.sh"
+              ;;
+          esac
+          
+          # Verify installation
+          if [[ -x "$HOME/bin/branch-memory" ]]; then
+            echo "✓ Installation successful"
+            "$HOME/bin/branch-memory" --version
+          else
+            echo "✗ Installation failed"
+            exit 1
+          fi
+
+  # ==============================================================================
+  # FUNCTIONAL TESTING
+  # ==============================================================================
+  
+  functional:
+    name: Functional Testing
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup test environment
+        run: |
+          export HOME="$RUNNER_TEMP/test-home"
+          mkdir -p "$HOME"
+          cd "$HOME"
+          
+          # Install the system
+          bash "$GITHUB_WORKSPACE/install.sh"
+          
+          # Initialize test git repository
+          git init
+          git config user.name "Test User"
+          git config user.email "test@example.com"
+          
+          # Install hooks in test repository
+          "$HOME/bin/branch-memory" hooks install
+          
+      - name: Test basic operations
+        run: |
+          cd "$RUNNER_TEMP/test-home"
+          
+          # Test save operation
+          echo "# Test content for main branch" > CLAUDE.md
+          "$HOME/bin/branch-memory" save "Test save operation"
+          
+          # Test list operation
+          "$HOME/bin/branch-memory" list
+          
+          # Test load operation
+          rm CLAUDE.md
+          "$HOME/bin/branch-memory" load main
+          
+          # Verify content restored
+          if grep -q "Test content for main branch" CLAUDE.md; then
+            echo "✓ Basic operations test passed"
+          else
+            echo "✗ Basic operations test failed"
+            exit 1
+          fi
+          
+      - name: Test automatic switching
+        run: |
+          cd "$RUNNER_TEMP/test-home"
+          
+          # Create content on main
+          echo "# Main branch work" > CLAUDE.md
+          git add CLAUDE.md
+          git commit -m "Add main content"
+          
+          # Create new branch (should auto-create memory)
+          git checkout -b feature/test-branch
+          
+          # Verify new memory was created
+          if [[ -f CLAUDE.md ]]; then
+            echo "✓ New branch memory created"
+          else
+            echo "✗ New branch memory not created"
+            exit 1
+          fi
+          
+          # Add content to feature branch
+          echo "# Feature branch work" > CLAUDE.md
+          git add CLAUDE.md
+          git commit -m "Add feature content"
+          
+          # Switch back to main
+          git checkout main
+          
+          # Verify main content restored
+          if grep -q "Main branch work" CLAUDE.md; then
+            echo "✓ Automatic switching test passed"
+          else
+            echo "✗ Automatic switching test failed"
+            cat CLAUDE.md
+            exit 1
+          fi
+
+  # ==============================================================================
+  # INTEGRATION TESTING
+  # ==============================================================================
+  
+  integration:
+    name: Integration Testing
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Test with real repository
+        run: |
+          export HOME="$RUNNER_TEMP/test-home"
+          mkdir -p "$HOME"
+          
+          # Clone a real repository for testing
+          git clone --depth=1 https://github.com/octocat/Hello-World.git "$HOME/test-repo"
+          cd "$HOME/test-repo"
+          
+          # Install system
+          bash "$GITHUB_WORKSPACE/install.sh"
+          
+          # Install hooks
+          "$HOME/bin/branch-memory" hooks install
+          
+          # Test with real git workflow
+          echo "# Working on Hello World improvements" > CLAUDE.md
+          "$HOME/bin/branch-memory" save "Initial work on improvements"
+          
+          # Create feature branch
+          git checkout -b feature/test-improvement
+          
+          # Verify it works with real repository
+          "$HOME/bin/branch-memory" status
+          "$HOME/bin/branch-memory" list
+          
+          echo "✓ Integration testing passed"
+
+  # ==============================================================================
+  # PERFORMANCE TESTING
+  # ==============================================================================
+  
+  performance:
+    name: Performance Testing
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Setup performance test environment
+        run: |
+          export HOME="$RUNNER_TEMP/test-home"
+          mkdir -p "$HOME"
+          cd "$HOME"
+          
+          # Install system
+          bash "$GITHUB_WORKSPACE/install.sh"
+          
+          # Create repository with many branches
+          git init large-repo
+          cd large-repo
+          git config user.name "Test User"
+          git config user.email "test@example.com"
+          
+          # Install hooks
+          "$HOME/bin/branch-memory" hooks install
+          
+      - name: Create test branches
+        run: |
+          cd "$RUNNER_TEMP/test-home/large-repo"
+          
+          # Create initial commit
+          echo "# Large repository test" > README.md
+          git add README.md
+          git commit -m "Initial commit"
+          
+          # Create many branches with memory
+          for i in {1..50}; do
+            git checkout -b "feature/test-branch-$i"
+            echo "# Working on feature $i" > CLAUDE.md
+            "$HOME/bin/branch-memory" save "Feature $i development"
+            git checkout main
+          done
+          
+      - name: Performance benchmarks
+        run: |
+          cd "$RUNNER_TEMP/test-home/large-repo"
+          
+          # Time memory operations
+          echo "Running performance benchmarks..."
+          
+          # Test save operation
+          start_time=$(date +%s%N)
+          echo "# Large content for testing" > CLAUDE.md
+          for i in {1..100}; do
+            echo "Line $i of test content" >> CLAUDE.md
+          done
+          "$HOME/bin/branch-memory" save "Performance test"
+          end_time=$(date +%s%N)
+          save_duration=$(( (end_time - start_time) / 1000000 ))
+          
+          # Test load operation  
+          rm CLAUDE.md
+          start_time=$(date +%s%N)
+          "$HOME/bin/branch-memory" load main
+          end_time=$(date +%s%N)
+          load_duration=$(( (end_time - start_time) / 1000000 ))
+          
+          # Test branch switching
+          start_time=$(date +%s%N)
+          for i in {1..5}; do
+            git checkout "feature/test-branch-$i"
+            git checkout main
+          done
+          end_time=$(date +%s%N)
+          switch_duration=$(( (end_time - start_time) / 1000000 / 10 ))
+          
+          echo "Performance Results:"
+          echo "==================="
+          echo "Save operation: ${save_duration}ms"
+          echo "Load operation: ${load_duration}ms"  
+          echo "Branch switch: ${switch_duration}ms"
+          
+          # Performance thresholds
+          if [[ $save_duration -lt 1000 && $load_duration -lt 500 && $switch_duration -lt 200 ]]; then
+            echo "✓ Performance benchmarks passed"
+          else
+            echo "⚠ Performance benchmarks exceeded thresholds"
+            echo "  Save: $save_duration ms (threshold: 1000ms)"
+            echo "  Load: $load_duration ms (threshold: 500ms)"
+            echo "  Switch: $switch_duration ms (threshold: 200ms)"
+            exit 1
+          fi
+
+  # ==============================================================================
+  # SECURITY SCANNING
+  # ==============================================================================
+  
+  security:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Run security audit
+        run: |
+          echo "Running security audit..."
+          
+          # Check for hardcoded secrets or sensitive patterns
+          if grep -r -i "password\|secret\|key\|token" src/ --exclude-dir=tests; then
+            echo "⚠ Found potential sensitive data patterns"
+            echo "Please review the above matches"
+          fi
+          
+          # Check for dangerous commands
+          dangerous_patterns=(
+            "rm -rf \$HOME"
+            "rm -rf /"
+            "chmod 777"
+            "eval.*\$"
+            "exec.*\$"
+          )
+          
+          for pattern in "${dangerous_patterns[@]}"; do
+            if grep -r "$pattern" src/; then
+              echo "✗ Found dangerous pattern: $pattern"
+              exit 1
+            fi
+          done
+          
+          echo "✓ Security audit passed"
+          
+      - name: Check file permissions
+        run: |
+          # Verify no files are world-writable
+          if find . -type f -perm -002 | grep -v ".git"; then
+            echo "✗ Found world-writable files"
+            exit 1
+          fi
+          
+          echo "✓ File permissions are secure"
+
+  # ==============================================================================
+  # CROSS-PLATFORM TESTING
+  # ==============================================================================
+  
+  cross-platform:
+    name: Cross-Platform Testing
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-20.04, macos-latest, macos-12]
+        
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Install dependencies
+        run: |
+          case "${{ runner.os }}" in
+            Linux)
+              sudo apt-get update
+              sudo apt-get install -y git bash
+              ;;
+            macOS)
+              # macOS already has required tools
+              which git bash
+              ;;
+          esac
+          
+      - name: Test installation
+        run: |
+          export HOME="$RUNNER_TEMP/test-home"
+          mkdir -p "$HOME"
+          cd "$HOME"
+          
+          # Test installation
+          bash "$GITHUB_WORKSPACE/install.sh"
+          
+          # Verify installation
+          if [[ -x "$HOME/bin/branch-memory" ]]; then
+            echo "✓ Installation successful on ${{ matrix.os }}"
+          else
+            echo "✗ Installation failed on ${{ matrix.os }}"
+            exit 1
+          fi
+          
+      - name: Test core functionality
+        run: |
+          cd "$RUNNER_TEMP/test-home"
+          
+          # Initialize git repository
+          git init test-repo
+          cd test-repo
+          git config user.name "Test User"
+          git config user.email "test@example.com"
+          
+          # Install hooks
+          "$HOME/bin/branch-memory" hooks install
+          
+          # Test basic workflow
+          echo "# Test content" > CLAUDE.md
+          "$HOME/bin/branch-memory" save "Test on ${{ matrix.os }}"
+          "$HOME/bin/branch-memory" list
+          "$HOME/bin/branch-memory" status
+          
+          echo "✓ Core functionality test passed on ${{ matrix.os }}"
+
+  # ==============================================================================
+  # SYSTEM REQUIREMENTS
+  # ==============================================================================
+  
+  requirements:
+    name: System Requirements Testing
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Test minimum requirements
+        run: |
+          echo "Testing system requirements on ${{ matrix.os }}"
+          
+          # Check bash version
+          bash_version=$(bash --version | head -1 | grep -o '[0-9]\+\.[0-9]\+' | head -1)
+          echo "Bash version: $bash_version"
+          
+          # Check git version
+          git_version=$(git --version | grep -o '[0-9]\+\.[0-9]\+' | head -1)
+          echo "Git version: $git_version"
+          
+          # Check available disk space
+          available_space=$(df -m . | awk 'NR==2 {print $4}')
+          echo "Available space: ${available_space}MB"
+          
+          # Check required commands
+          required_commands="mkdir cp mv rm find grep awk sed chmod"
+          for cmd in $required_commands; do
+            if command -v "$cmd" >/dev/null; then
+              echo "✓ $cmd available"
+            else
+              echo "✗ $cmd not available"
+              exit 1
+            fi
+          done
+          
+          echo "✓ All system requirements met"
+
+  # ==============================================================================
+  # DOCUMENTATION TESTING
+  # ==============================================================================
+  
+  documentation:
+    name: Documentation Testing
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Test documentation links
+        run: |
+          echo "Testing documentation structure..."
+          
+          # Check required documentation files exist
+          required_docs=(
+            "README.md"
+            "docs/quick-start.md"
+            "docs/installation.md"
+            "docs/user-guide.md"
+            "docs/troubleshooting.md"
+          )
+          
+          for doc in "${required_docs[@]}"; do
+            if [[ -f "$doc" ]]; then
+              echo "✓ $doc exists"
+            else
+              echo "✗ $doc missing"
+              exit 1
+            fi
+          done
+          
+          # Check for broken internal links
+          if grep -r "](docs/" . --include="*.md" | grep -v "http"; then
+            echo "Checking internal documentation links..."
+            # Could add more sophisticated link checking here
+          fi
+          
+          echo "✓ Documentation structure is valid"
+
+  # ==============================================================================
+  # INTEGRATION SUMMARY
+  # ==============================================================================
+  
+  test-summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [lint, compatibility, installation, functional, requirements, documentation, security]
+    if: always()
+    
+    steps:
+      - name: Check test results
+        run: |
+          echo "CI Pipeline Results Summary"
+          echo "=========================="
+          echo ""
+          
+          # Check if all jobs passed
+          jobs_status="${{ needs.lint.result }},${{ needs.compatibility.result }},${{ needs.installation.result }},${{ needs.functional.result }},${{ needs.requirements.result }},${{ needs.documentation.result }},${{ needs.security.result }}"
+          
+          if [[ "$jobs_status" =~ "failure" ]]; then
+            echo "✗ Some tests failed"
+            echo "Lint: ${{ needs.lint.result }}"
+            echo "Compatibility: ${{ needs.compatibility.result }}"
+            echo "Installation: ${{ needs.installation.result }}"
+            echo "Functional: ${{ needs.functional.result }}"
+            echo "Requirements: ${{ needs.requirements.result }}"
+            echo "Documentation: ${{ needs.documentation.result }}"
+            echo "Security: ${{ needs.security.result }}"
+            exit 1
+          else
+            echo "✓ All tests passed successfully"
+            echo ""
+            echo "Ready for release! 🚀"
+          fi

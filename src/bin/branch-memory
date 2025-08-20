@@ -1,0 +1,679 @@
+#!/bin/bash
+# Claude Code Branch Memory Manager - Working Version
+# Robust and tested branch-specific memory management
+
+# Script metadata
+readonly SCRIPT_NAME="branch-memory"
+readonly SCRIPT_VERSION="2.0.0"
+readonly SCRIPT_DESCRIPTION="Professional branch-specific memory management for Claude Code"
+
+# Basic error handling
+set -eo pipefail
+
+# ==============================================================================
+# CONFIGURATION
+# ==============================================================================
+
+# Default settings
+MEMORY_DIR="${CLAUDE_MEMORY_DIR:-.claude/memories}"
+MEMORY_FILE="${CLAUDE_MEMORY_FILE:-CLAUDE.md}"
+AUTO_SAVE_ON_CHECKOUT="${CLAUDE_MEMORY_AUTO_SAVE_ON_CHECKOUT:-true}"
+AUTO_SAVE_ON_COMMIT="${CLAUDE_MEMORY_AUTO_SAVE_ON_COMMIT:-true}"
+DEBUG_ENABLED="${CLAUDE_MEMORY_DEBUG:-false}"
+
+# ==============================================================================
+# UTILITY FUNCTIONS
+# ==============================================================================
+
+# Logging functions
+log_info() {
+    local timestamp
+    timestamp=$(date '+%H:%M:%S')
+    echo "[$timestamp] [INFO] $1" >&2
+}
+
+log_error() {
+    local timestamp
+    timestamp=$(date '+%H:%M:%S')
+    echo "[$timestamp] [ERROR] $1" >&2
+}
+
+log_warn() {
+    local timestamp
+    timestamp=$(date '+%H:%M:%S')
+    echo "[$timestamp] [WARN] $1" >&2
+}
+
+log_debug() {
+    if [[ "$DEBUG_ENABLED" == "true" ]]; then
+        local timestamp
+        timestamp=$(date '+%H:%M:%S')
+        echo "[$timestamp] [DEBUG] $1" >&2
+    fi
+}
+
+# Get current git branch
+get_current_branch() {
+    if command -v git >/dev/null 2>&1 && git rev-parse --git-dir >/dev/null 2>&1; then
+        local branch
+        branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+        if [[ "$branch" == "HEAD" ]]; then
+            echo "detached-head"
+        else
+            echo "$branch"
+        fi
+    else
+        echo "unknown"
+    fi
+}
+
+# Sanitize branch name for filename
+sanitize_branch_name() {
+    local branch_name="$1"
+    echo "$branch_name" | sed 's/[^a-zA-Z0-9._-]/_/g' | sed 's/_\+/_/g'
+}
+
+# Ensure directory exists
+ensure_directory() {
+    local dir_path="$1"
+    
+    if [[ ! -d "$dir_path" ]]; then
+        if mkdir -p "$dir_path" 2>/dev/null; then
+            log_debug "Created directory: $dir_path"
+            return 0
+        else
+            log_error "Failed to create directory: $dir_path"
+            return 1
+        fi
+    fi
+    return 0
+}
+
+# ==============================================================================
+# MEMORY OPERATIONS
+# ==============================================================================
+
+# Save current memory to branch-specific file
+save_memory() {
+    local branch_name="$1"
+    local description="${2:-Manual save}"
+    
+    local safe_branch
+    safe_branch=$(sanitize_branch_name "$branch_name")
+    
+    # Ensure memory directory exists
+    if ! ensure_directory "$MEMORY_DIR"; then
+        return 1
+    fi
+    
+    # Check if current memory file exists and has content
+    if [[ ! -f "$MEMORY_FILE" ]]; then
+        log_error "No memory file found: $MEMORY_FILE"
+        return 1
+    fi
+    
+    if [[ ! -s "$MEMORY_FILE" ]]; then
+        log_error "Memory file is empty: $MEMORY_FILE"
+        return 1
+    fi
+    
+    local target_file="$MEMORY_DIR/$safe_branch.md"
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    
+    # Create enhanced memory file
+    {
+        echo "# Claude Code Memory - Branch: $branch_name"
+        echo ""
+        echo "**Last Updated**: $timestamp"
+        echo "**Description**: $description"
+        echo ""
+        echo "---"
+        echo ""
+        cat "$MEMORY_FILE"
+    } > "$target_file"
+    
+    if [[ $? -eq 0 ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Load memory from branch-specific file
+load_memory() {
+    local branch_name="$1"
+    
+    local safe_branch
+    safe_branch=$(sanitize_branch_name "$branch_name")
+    local source_file="$MEMORY_DIR/$safe_branch.md"
+    
+    if [[ ! -f "$source_file" ]]; then
+        # Try fallback to main branch
+        for main_branch in "main" "master" "develop"; do
+            local main_safe
+            main_safe=$(sanitize_branch_name "$main_branch")
+            local main_file="$MEMORY_DIR/$main_safe.md"
+            if [[ -f "$main_file" ]]; then
+                log_info "Using fallback memory from branch '$main_branch'"
+                source_file="$main_file"
+                break
+            fi
+        done
+        
+        if [[ ! -f "$source_file" ]]; then
+            return 1
+        fi
+    fi
+    
+    # Backup current memory if it exists
+    if [[ -f "$MEMORY_FILE" ]]; then
+        local backup_dir=".claude/backups"
+        ensure_directory "$backup_dir"
+        local backup_file="$backup_dir/$(sanitize_branch_name "$(get_current_branch)")_$(date +%Y%m%d_%H%M%S)_load.md"
+        cp "$MEMORY_FILE" "$backup_file" 2>/dev/null || log_warn "Failed to create backup"
+    fi
+    
+    # Load the memory
+    if cp "$source_file" "$MEMORY_FILE" 2>/dev/null; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# List all branch memories
+list_memories() {
+    if [[ ! -d "$MEMORY_DIR" ]]; then
+        echo "No branch memories found"
+        echo ""
+        echo "To create a memory for the current branch:"
+        echo "  $SCRIPT_NAME save \"Initial branch setup\""
+        return 1
+    fi
+    
+    local current_branch
+    current_branch=$(get_current_branch)
+    local safe_current
+    safe_current=$(sanitize_branch_name "$current_branch")
+    local found_any=false
+    
+    echo "Available branch memories:"
+    echo "========================="
+    
+    for file in "$MEMORY_DIR"/*.md; do
+        [[ -f "$file" ]] || continue
+        found_any=true
+        
+        local basename
+        basename=$(basename "$file" .md)
+        local size
+        size=$(ls -lh "$file" | awk '{print $5}')
+        local modified
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            modified=$(stat -f "%Sm" -t "%m/%d %H:%M" "$file" 2>/dev/null || echo "unknown")
+        else
+            modified=$(stat -c "%y" "$file" 2>/dev/null | cut -d' ' -f1,2 | cut -d'.' -f1 || echo "unknown")
+        fi
+        
+        if [[ "$basename" == "$safe_current" ]]; then
+            echo "  → $basename ($size, modified: $modified) [current]"
+        else
+            echo "    $basename ($size, modified: $modified)"
+        fi
+    done
+    
+    if [[ "$found_any" == "false" ]]; then
+        echo "No branch memories found"
+        return 1
+    fi
+    
+    return 0
+}
+
+# Create new branch memory file
+create_memory() {
+    local branch_name="$1"
+    
+    if [[ -f "$MEMORY_FILE" ]]; then
+        log_debug "Memory file already exists"
+        return 0
+    fi
+    
+    local timestamp
+    timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    local repo_name="unknown"
+    
+    if git rev-parse --git-dir >/dev/null 2>&1; then
+        repo_name=$(basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null || echo "unknown")
+    fi
+    
+    cat > "$MEMORY_FILE" << EOF
+# CLAUDE.md
+
+## Branch: $branch_name
+
+**Created**: $timestamp
+**Repository**: $repo_name
+
+## Current Work
+
+- Switched to branch: $branch_name
+- Status: New branch, ready for development
+
+## Notes
+
+Add your branch-specific context and development notes here.
+
+## TODO
+
+- [ ] Define branch objectives
+- [ ] Begin implementation
+
+EOF
+
+    return 0
+}
+
+# ==============================================================================
+# COMMAND IMPLEMENTATIONS
+# ==============================================================================
+
+cmd_save() {
+    local description="${1:-Manual save}"
+    
+    local current_branch
+    current_branch=$(get_current_branch)
+    
+    case "$current_branch" in
+        "unknown")
+            echo "Error: Not in a git repository"
+            echo "Navigate to a git repository and try again"
+            exit 1
+            ;;
+        "detached-head")
+            echo "Error: In detached HEAD state"
+            echo "Switch to a named branch first: git checkout main"
+            exit 1
+            ;;
+    esac
+    
+    if [[ ! -f "$MEMORY_FILE" ]]; then
+        echo "Error: No $MEMORY_FILE file found"
+        echo "Create one first: echo '# Working on $current_branch' > $MEMORY_FILE"
+        exit 1
+    fi
+    
+    if save_memory "$current_branch" "$description"; then
+        echo "✓ Memory saved for branch '$current_branch'"
+        [[ "$description" != "Manual save" ]] && echo "  Description: $description"
+    else
+        echo "✗ Failed to save memory"
+        exit 1
+    fi
+}
+
+cmd_load() {
+    local target_branch="$1"
+    
+    if [[ -z "$target_branch" ]]; then
+        echo "Error: Please specify a branch name"
+        echo "Usage: $SCRIPT_NAME load <branch-name>"
+        echo ""
+        echo "Available branches:"
+        list_memories | grep -E "^    " | sed 's/^    /  /' || echo "  No branch memories found"
+        exit 1
+    fi
+    
+    if load_memory "$target_branch"; then
+        echo "✓ Memory loaded from branch '$target_branch'"
+    else
+        echo "✗ No memory found for branch '$target_branch'"
+        echo ""
+        echo "Available branches:"
+        list_memories | grep -E "^    " | sed 's/^    /  /' || echo "  No branch memories found"
+        exit 1
+    fi
+}
+
+cmd_list() {
+    list_memories
+}
+
+cmd_switch() {
+    local target_branch="$1"
+    
+    if [[ -z "$target_branch" ]]; then
+        echo "Error: Please specify a branch name"
+        echo "Usage: $SCRIPT_NAME switch <branch-name>"
+        exit 1
+    fi
+    
+    # Check if we're in a git repository
+    if ! git rev-parse --git-dir >/dev/null 2>&1; then
+        echo "Error: Not in a git repository"
+        exit 1
+    fi
+    
+    # Save current memory first
+    local current_branch
+    current_branch=$(get_current_branch)
+    
+    if [[ "$current_branch" != "unknown" && "$current_branch" != "$target_branch" && -f "$MEMORY_FILE" ]]; then
+        echo "→ Saving current memory..."
+        save_memory "$current_branch" "Auto-saved before switching to $target_branch" || log_warn "Failed to save current memory"
+    fi
+    
+    # Switch git branch
+    echo "→ Switching to branch '$target_branch'..."
+    if git checkout "$target_branch" 2>/dev/null; then
+        echo "✓ Successfully switched to branch '$target_branch'"
+        
+        # Check if memory exists for this branch
+        if [[ -f "$MEMORY_FILE" ]]; then
+            echo "✓ Branch memory available"
+        else
+            echo "ℹ Creating new memory for this branch..."
+            create_memory "$target_branch"
+        fi
+    else
+        echo "✗ Failed to switch to branch '$target_branch'"
+        echo ""
+        echo "Try: git branch -a  # to see available branches"
+        echo "Or:  git status     # to check for uncommitted changes"
+        exit 1
+    fi
+}
+
+cmd_status() {
+    local current_branch
+    current_branch=$(get_current_branch)
+    local repo_name
+    repo_name=$(basename "$(pwd)")
+    
+    echo "Branch Memory Status"
+    echo "===================="
+    echo ""
+    echo "Repository: $repo_name"
+    echo "Current branch: $current_branch"
+    echo "Memory directory: $MEMORY_DIR"
+    echo ""
+    
+    # Current memory status
+    echo "Memory Files:"
+    echo "-------------"
+    if [[ -f "$MEMORY_FILE" ]]; then
+        local size
+        size=$(ls -lh "$MEMORY_FILE" | awk '{print $5}')
+        echo "  Current $MEMORY_FILE: ✓ Found ($size)"
+    else
+        echo "  Current $MEMORY_FILE: ✗ Not found"
+    fi
+    
+    # Saved memory status
+    local safe_branch
+    safe_branch=$(sanitize_branch_name "$current_branch")
+    local saved_memory="$MEMORY_DIR/$safe_branch.md"
+    if [[ -f "$saved_memory" ]]; then
+        local size
+        size=$(ls -lh "$saved_memory" | awk '{print $5}')
+        echo "  Saved memory: ✓ Found ($size)"
+    else
+        echo "  Saved memory: ✗ Not found"
+    fi
+    
+    echo ""
+    
+    # Configuration
+    echo "Configuration:"
+    echo "--------------"
+    echo "  Auto-save on checkout: $AUTO_SAVE_ON_CHECKOUT"
+    echo "  Auto-save on commit: $AUTO_SAVE_ON_COMMIT"
+    echo "  Debug enabled: $DEBUG_ENABLED"
+    echo ""
+    
+    # Hook status
+    echo "Git Hooks Status:"
+    echo "=================="
+    if git rev-parse --git-dir >/dev/null 2>&1; then
+        local repo_root
+        repo_root=$(git rev-parse --show-toplevel)
+        
+        for hook in "post-checkout" "pre-commit"; do
+            local hook_file="$repo_root/.git/hooks/$hook"
+            printf "  %-15s: " "$hook"
+            
+            if [[ -f "$hook_file" && -x "$hook_file" ]]; then
+                if grep -q "Claude Code Branch Memory Manager" "$hook_file" 2>/dev/null; then
+                    echo "✓ installed"
+                else
+                    echo "⚠ exists (not ours)"
+                fi
+            elif [[ -f "$hook_file" ]]; then
+                echo "⚠ not executable"
+            else
+                echo "✗ not installed"
+            fi
+        done
+    else
+        echo "  Not in a git repository"
+    fi
+}
+
+cmd_hooks() {
+    local subcommand="${1:-status}"
+    
+    case "$subcommand" in
+        "status")
+            if git rev-parse --git-dir >/dev/null 2>&1; then
+                local repo_root
+                repo_root=$(git rev-parse --show-toplevel)
+                echo "Git Hooks Status for $(basename "$repo_root"):"
+                echo "============================================="
+                
+                for hook in "post-checkout" "pre-commit"; do
+                    local hook_file="$repo_root/.git/hooks/$hook"
+                    printf "  %-15s: " "$hook"
+                    
+                    if [[ -f "$hook_file" && -x "$hook_file" ]]; then
+                        if grep -q "Claude Code Branch Memory Manager" "$hook_file" 2>/dev/null; then
+                            echo "✓ installed"
+                        else
+                            echo "⚠ exists (not ours)"
+                        fi
+                    elif [[ -f "$hook_file" ]]; then
+                        echo "⚠ not executable"
+                    else
+                        echo "✗ not installed"
+                    fi
+                done
+            else
+                echo "Error: Not in a git repository"
+                exit 1
+            fi
+            ;;
+        "install")
+            if ! git rev-parse --git-dir >/dev/null 2>&1; then
+                echo "Error: Not in a git repository"
+                exit 1
+            fi
+            
+            local force="${2:-false}"
+            [[ "$force" == "--force" || "$force" == "-f" ]] && force="true"
+            
+            local repo_root
+            repo_root=$(git rev-parse --show-toplevel)
+            local hooks_dir="$repo_root/.git/hooks"
+            local claude_memory_home="${HOME}/.claude-memory"
+            
+            echo "Installing hooks in $(basename "$repo_root")..."
+            
+            for hook in "post-checkout" "pre-commit"; do
+                local source_hook="$claude_memory_home/hooks/$hook"
+                local target_hook="$hooks_dir/$hook"
+                
+                if [[ ! -f "$source_hook" ]]; then
+                    echo "  $hook: ✗ template not found ($source_hook)"
+                    continue
+                fi
+                
+                # Check if hook exists and force flag
+                if [[ -f "$target_hook" && "$force" != "true" ]]; then
+                    if ! grep -q "Claude Code Branch Memory Manager" "$target_hook" 2>/dev/null; then
+                        echo "  $hook: ⚠ exists (use --force to overwrite)"
+                        continue
+                    fi
+                fi
+                
+                # Install hook
+                if cp "$source_hook" "$target_hook" && chmod +x "$target_hook"; then
+                    echo "  $hook: ✓ installed"
+                else
+                    echo "  $hook: ✗ failed to install"
+                fi
+            done
+            
+            echo ""
+            echo "✓ Hook installation completed"
+            ;;
+        *)
+            echo "Error: Unknown hooks subcommand: $subcommand"
+            echo "Available: status, install"
+            exit 1
+            ;;
+    esac
+}
+
+cmd_health() {
+    echo "Claude Code Branch Memory Manager - Health Check"
+    echo "=============================================="
+    echo ""
+    
+    local issues=()
+    
+    # Check git
+    if ! command -v git >/dev/null 2>&1; then
+        issues+=("Git not installed")
+    elif ! git rev-parse --git-dir >/dev/null 2>&1; then
+        issues+=("Not in a git repository")
+    fi
+    
+    # Check memory directory
+    if [[ ! -w "$(dirname "$MEMORY_DIR")" ]]; then
+        issues+=("Cannot write to memory directory parent")
+    fi
+    
+    # Check hooks
+    if git rev-parse --git-dir >/dev/null 2>&1; then
+        local repo_root
+        repo_root=$(git rev-parse --show-toplevel)
+        local hook_count=0
+        
+        for hook in "post-checkout" "pre-commit"; do
+            local hook_file="$repo_root/.git/hooks/$hook"
+            if [[ -f "$hook_file" && -x "$hook_file" ]]; then
+                if grep -q "Claude Code Branch Memory Manager" "$hook_file" 2>/dev/null; then
+                    ((hook_count++))
+                fi
+            fi
+        done
+        
+        if [[ $hook_count -lt 2 ]]; then
+            issues+=("Not all hooks installed ($hook_count/2)")
+        fi
+    fi
+    
+    # Report results
+    if [[ ${#issues[@]} -eq 0 ]]; then
+        echo "✓ All health checks passed"
+        echo ""
+        echo "System is healthy and ready to use!"
+        return 0
+    else
+        echo "⚠ Found ${#issues[@]} issues:"
+        for issue in "${issues[@]}"; do
+            echo "  ✗ $issue"
+        done
+        echo ""
+        echo "To fix issues:"
+        echo "  $SCRIPT_NAME hooks install"
+        return 1
+    fi
+}
+
+cmd_version() {
+    echo "$SCRIPT_NAME version $SCRIPT_VERSION"
+    echo "$SCRIPT_DESCRIPTION"
+    echo ""
+    echo "System Information:"
+    echo "  Platform: $OSTYPE"
+    echo "  Bash Version: ${BASH_VERSION:-unknown}"
+    echo "  Memory Directory: $MEMORY_DIR"
+    echo "  Memory File: $MEMORY_FILE"
+}
+
+# ==============================================================================
+# HELP AND MAIN DISPATCHER
+# ==============================================================================
+
+print_help() {
+    cat << EOF
+$SCRIPT_NAME version $SCRIPT_VERSION
+$SCRIPT_DESCRIPTION
+
+USAGE:
+    $SCRIPT_NAME <command> [arguments]
+
+COMMANDS:
+    save [description]     Save current $MEMORY_FILE to branch memory
+    load <branch>          Load memory from specified branch
+    list                   List all available branch memories
+    switch <branch>        Switch git branch and load its memory
+    status                 Show current branch and memory status
+    hooks <subcommand>     Manage git hooks (status|install)
+    health                 Perform system health check
+    version                Show version information
+    help                   Show this help message
+
+EXAMPLES:
+    $SCRIPT_NAME save "Implemented user authentication"
+    $SCRIPT_NAME load main
+    $SCRIPT_NAME switch feature/new-api
+    $SCRIPT_NAME hooks install
+    $SCRIPT_NAME health
+
+GETTING STARTED:
+    1. Create a CLAUDE.md file: echo '# My project work' > CLAUDE.md
+    2. Save it: $SCRIPT_NAME save "Initial setup"
+    3. Switch branches: git checkout -b feature/test
+    4. Your memory automatically switches!
+
+EOF
+}
+
+# Main command dispatcher
+main() {
+    local command="${1:-help}"
+    
+    case "$command" in
+        "save")         cmd_save "${2:-}" ;;
+        "load")         cmd_load "${2:-}" ;;
+        "list"|"ls")    cmd_list ;;
+        "switch"|"sw")  cmd_switch "${2:-}" ;;
+        "status")       cmd_status ;;
+        "hooks")        cmd_hooks "${2:-}" "${3:-}" ;;
+        "health")       cmd_health ;;
+        "version"|"--version"|"-v") cmd_version ;;
+        "help"|"--help"|"-h"|"") print_help ;;
+        *)
+            echo "Error: Unknown command: $command"
+            echo ""
+            echo "Available commands: save, load, list, switch, status, hooks, health, version, help"
+            echo "For detailed help: $SCRIPT_NAME help"
+            exit 1
+            ;;
+    esac
+}
+
+# Execute with error handling
+main "$@"
