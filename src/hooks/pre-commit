@@ -174,7 +174,8 @@ HOOK_TIMEOUT=$(get_config_int "hook_timeout" 30)
 trap timeout_handler ALRM
 if command -v timeout &>/dev/null; then
     # Use timeout command if available
-    timeout "$HOOK_TIMEOUT" bash -c "execute_with_error_handling"
+    # Security: Execute directly without shell interpretation
+    timeout "$HOOK_TIMEOUT" bash -c 'execute_with_error_handling'
 else
     # Fallback without timeout
     execute_with_error_handling

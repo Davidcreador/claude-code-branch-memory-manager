@@ -2,6 +2,10 @@
 # Claude Code Branch Memory Manager - Universal Installer
 # One-line installation for the professional memory management system
 
+# Security: Set restrictive file permissions by default
+set -euo pipefail
+umask 077
+
 # ==============================================================================
 # INSTALLER CONFIGURATION
 # ==============================================================================
@@ -157,7 +161,14 @@ download_files() {
     log "STEP" "Downloading installation files"
     
     local temp_dir
-    temp_dir=$(mktemp -d 2>/dev/null || mktemp -d -t 'claude-memory')
+    # Security: Use secure mktemp with proper template
+    temp_dir=$(mktemp -d "${TMPDIR:-/tmp}/claude-install.XXXXXX") || {
+        log "ERROR" "Failed to create secure temporary directory"
+        exit 1
+    }
+    
+    # Security: Cleanup on exit
+    trap 'rm -rf "$temp_dir"' EXIT INT TERM
     
     # Try different download methods
     if command -v curl >/dev/null 2>&1; then

@@ -169,8 +169,11 @@ timeout_handler() {
 HOOK_TIMEOUT=$(get_config_int "hook_timeout" 30)
 trap timeout_handler ALRM
 if command -v timeout &>/dev/null; then
-    # Use timeout command if available
-    timeout "$HOOK_TIMEOUT" bash -c "execute_with_error_handling '$1' '$2' '$3'"
+    # Security: Pass arguments safely without shell interpretation
+    export PREV_HEAD="$1"
+    export NEW_HEAD="$2"
+    export BRANCH_CHECKOUT="$3"
+    timeout "$HOOK_TIMEOUT" bash -c 'execute_with_error_handling "$PREV_HEAD" "$NEW_HEAD" "$BRANCH_CHECKOUT"'
 else
     # Fallback without timeout
     execute_with_error_handling "$1" "$2" "$3"

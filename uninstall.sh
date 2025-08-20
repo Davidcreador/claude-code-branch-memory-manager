@@ -7,6 +7,9 @@
 
 set -euo pipefail
 
+# Security: Set restrictive umask
+umask 077
+
 # ==============================================================================
 # CONSTANTS
 # ==============================================================================
@@ -188,9 +191,12 @@ remove_shell_integration() {
     
     for config in "${shell_configs[@]}"; do
         if [[ -f "$config" ]]; then
-            # Create temp file
+            # Create temp file securely
             local temp_file
-            temp_file=$(mktemp)
+            temp_file=$(mktemp "${TMPDIR:-/tmp}/claude-uninstall.XXXXXX") || {
+                log "ERROR" "Failed to create temp file"
+                continue
+            }
             
             # Remove our PATH addition
             if grep -q "Claude Memory Manager installer" "$config" 2>/dev/null; then

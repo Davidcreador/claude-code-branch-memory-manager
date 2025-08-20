@@ -2,6 +2,9 @@
 # Claude Code Branch Memory Manager - Working Version
 # Robust and tested branch-specific memory management
 
+# Security: Set restrictive file permissions by default
+umask 077
+
 # Script metadata
 readonly SCRIPT_NAME="branch-memory"
 readonly SCRIPT_VERSION="2.0.0"
@@ -67,19 +70,79 @@ get_current_branch() {
     fi
 }
 
-# Sanitize branch name for filename
+# Security: Validate input to prevent injection attacks
+validate_input() {
+    local input="$1"
+    local input_type="${2:-generic}"
+    local max_length="${3:-255}"
+    
+    # Check for null bytes (security issue)
+    if [[ "$input" =~ $'\0' ]]; then
+        echo "Error: Invalid input - contains null bytes" >&2
+        return 1
+    fi
+    
+    # Length validation
+    if [[ ${#input} -gt $max_length ]]; then
+        echo "Error: Input too long (max: $max_length characters)" >&2
+        return 1
+    fi
+    
+    # Type-specific validation
+    case "$input_type" in
+        branch)
+            # No absolute paths or home directory references
+            if [[ "$input" =~ ^[/~] ]] || [[ "$input" =~ \.\. ]]; then
+                echo "Error: Invalid branch name - no paths allowed" >&2
+                return 1
+            fi
+            ;;
+        file)
+            # Must be relative path within repo
+            if [[ "$input" =~ ^/ ]] || [[ "$input" =~ \.\. ]]; then
+                echo "Error: Invalid file path - must be relative" >&2
+                return 1
+            fi
+            ;;
+    esac
+    
+    return 0
+}
+
+# Sanitize branch name for filename with security hardening
 sanitize_branch_name() {
     local branch_name="$1"
-    echo "$branch_name" | sed 's/[^a-zA-Z0-9._-]/_/g' | sed 's/_\+/_/g'
+    
+    # Security: Prevent path traversal attacks
+    branch_name="${branch_name//\.\.\//_}"  # Remove ../
+    branch_name="${branch_name//\.\.\\/_}"  # Remove ..\
+    branch_name="${branch_name#/}"          # Remove leading /
+    branch_name="${branch_name#\~}"         # Remove leading ~
+    
+    # Security: Length limit to prevent buffer issues
+    if [[ ${#branch_name} -gt 255 ]]; then
+        branch_name="${branch_name:0:255}"
+    fi
+    
+    # Sanitize special characters
+    echo "$branch_name" | sed 's/[^a-zA-Z0-9._-]/_/g' | sed 's/_\+/_/g' | sed 's/^\./_/g'
 }
 
 # Ensure directory exists
 ensure_directory() {
     local dir_path="$1"
     
+    # Security: Check for symlinks
+    if [[ -L "$dir_path" ]]; then
+        log_error "Security: Directory is a symlink: $dir_path"
+        return 1
+    fi
+    
     if [[ ! -d "$dir_path" ]]; then
         if mkdir -p "$dir_path" 2>/dev/null; then
             log_debug "Created directory: $dir_path"
+            # Security: Set restrictive permissions
+            chmod 700 "$dir_path" 2>/dev/null || true
             return 0
         else
             log_error "Failed to create directory: $dir_path"
