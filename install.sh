@@ -59,17 +59,21 @@ confirm() {
     local question="$1"
     local default="${2:-n}"
     
+    # Convert to lowercase for comparison (bash 3.2 compatible)
+    local default_lower
+    default_lower=$(echo "$default" | tr '[:upper:]' '[:lower:]')
+    
     if is_non_interactive; then
-        [[ "${default,,}" =~ ^y ]]
+        [[ "$default_lower" =~ ^y ]]
         return $?
     fi
     
     local prompt="y/N"
-    [[ "${default,,}" =~ ^y ]] && prompt="Y/n"
+    [[ "$default_lower" =~ ^y ]] && prompt="Y/n"
     
     read -p "$(echo -e "${BLUE}?${NC} $question ($prompt): ")" -n 1 -r
     echo ""
-    [[ $REPLY =~ ^[Yy]$ ]] || ([[ -z $REPLY ]] && [[ "${default,,}" =~ ^y ]])
+    [[ $REPLY =~ ^[Yy]$ ]] || ([[ -z $REPLY ]] && [[ "$default_lower" =~ ^y ]])
 }
 
 # ==============================================================================
@@ -157,18 +161,32 @@ download_files() {
     
     # Try different download methods
     if command -v curl >/dev/null 2>&1; then
-        if curl -fsSL "$DOWNLOAD_URL" | tar -xz -C "$temp_dir" --strip-components=1 2>/dev/null; then
-            log "OK" "Downloaded using curl"
-            echo "$temp_dir"
-            return 0
+        if curl -fsSL "$DOWNLOAD_URL" -o "$temp_dir/archive.tar.gz" 2>/dev/null; then
+            if tar -xzf "$temp_dir/archive.tar.gz" -C "$temp_dir" 2>/dev/null; then
+                # Find the extracted directory (GitHub adds a prefix)
+                local extracted_dir
+                extracted_dir=$(find "$temp_dir" -maxdepth 1 -type d -name "claude-code-branch-memory-manager-*" | head -1)
+                if [[ -n "$extracted_dir" ]]; then
+                    log "OK" "Downloaded using curl"
+                    echo "$extracted_dir"
+                    return 0
+                fi
+            fi
         fi
     fi
     
     if command -v wget >/dev/null 2>&1; then
-        if wget -qO- "$DOWNLOAD_URL" | tar -xz -C "$temp_dir" --strip-components=1 2>/dev/null; then
-            log "OK" "Downloaded using wget"
-            echo "$temp_dir"
-            return 0
+        if wget -q "$DOWNLOAD_URL" -O "$temp_dir/archive.tar.gz" 2>/dev/null; then
+            if tar -xzf "$temp_dir/archive.tar.gz" -C "$temp_dir" 2>/dev/null; then
+                # Find the extracted directory (GitHub adds a prefix)
+                local extracted_dir
+                extracted_dir=$(find "$temp_dir" -maxdepth 1 -type d -name "claude-code-branch-memory-manager-*" | head -1)
+                if [[ -n "$extracted_dir" ]]; then
+                    log "OK" "Downloaded using wget"
+                    echo "$extracted_dir"
+                    return 0
+                fi
+            fi
         fi
     fi
     
