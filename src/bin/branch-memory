@@ -706,6 +706,7 @@ COMMANDS:
     enable                 Enable automatic memory switching
     copy <src> <dst>       Copy memory from one branch to another
     restore [branch]       Restore memory from automatic backup
+    update                 Check for updates
     version                Show version information
     help                   Show this help message
 
@@ -741,6 +742,7 @@ main() {
         "enable")       cmd_enable ;;
         "copy"|"cp")    cmd_copy "${2:-}" "${3:-}" ;;
         "restore")      cmd_restore "${2:-}" ;;
+        "update")       cmd_update ;;
         "version"|"--version"|"-v") cmd_version ;;
         "help"|"--help"|"-h"|"") print_help ;;
         *)
@@ -816,6 +818,39 @@ cmd_copy() {
     echo "✓ Copied memory from '$source_branch' to '$target_branch'"
     echo ""
     echo "To load it: $SCRIPT_NAME load $target_branch"
+}
+
+# Command: update - Check for and install updates
+cmd_update() {
+    echo "Checking for updates..."
+    echo ""
+    
+    # Check if update script is available locally
+    local update_script="$HOME/.claude-memory/update.sh"
+    if [[ -f "$update_script" ]]; then
+        bash "$update_script" --check
+        echo ""
+        echo "To update: $update_script"
+    else
+        # Download and run update check
+        echo "Downloading update checker..."
+        local temp_file
+        temp_file=$(mktemp "${TMPDIR:-/tmp}/claude-update.XXXXXX") || {
+            echo "Error: Failed to create temp file"
+            exit 1
+        }
+        trap 'rm -f "$temp_file"' EXIT
+        
+        if curl -fsSL "https://raw.githubusercontent.com/Davidcreador/claude-code-branch-memory-manager/main/update.sh" -o "$temp_file" 2>/dev/null; then
+            bash "$temp_file" --check
+            echo ""
+            echo "To update, run:"
+            echo "  curl -fsSL https://raw.githubusercontent.com/Davidcreador/claude-code-branch-memory-manager/main/update.sh | bash"
+        else
+            echo "Error: Failed to check for updates"
+            echo "Visit: https://github.com/Davidcreador/claude-code-branch-memory-manager/releases"
+        fi
+    fi
 }
 
 # Command: restore - Restore memory from automatic backup

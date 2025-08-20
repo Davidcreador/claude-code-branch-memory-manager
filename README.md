@@ -255,6 +255,44 @@ cd /path/to/your/repo
 branch-memory status
 ```
 
+## 🔄 Updating
+
+### Automatic Update
+```bash
+# Download and run the updater
+curl -fsSL https://raw.githubusercontent.com/Davidcreador/claude-code-branch-memory-manager/main/update.sh | bash
+```
+
+### Manual Update
+```bash
+# Clone the repository if not already present
+git clone https://github.com/Davidcreador/claude-code-branch-memory-manager.git
+cd claude-code-branch-memory-manager
+./update.sh
+```
+
+### Update Features
+- **Automatic backup** before updating
+- **Version checking** to ensure you need an update
+- **Data preservation** - keeps all your memories and configs
+- **Rollback capability** if something goes wrong
+- **Integrity verification** with SHA256 checksums
+
+### Update Commands
+```bash
+# Check for updates without installing
+./update.sh --check
+
+# Force update without prompts
+./update.sh --force
+
+# Rollback to previous version
+./update.sh --rollback
+
+# Show current version
+branch-memory --version
+```
+
 ## 🗑️ Uninstallation
 
 ### Complete Removal
