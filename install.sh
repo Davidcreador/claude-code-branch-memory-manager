@@ -41,11 +41,11 @@ log() {
     timestamp=$(date '+%H:%M:%S')
     
     case "$level" in
-        "INFO")  echo -e "${CYAN}[$timestamp]${NC} ${BLUE}ℹ${NC}  $message" ;;
-        "OK")    echo -e "${CYAN}[$timestamp]${NC} ${GREEN}✓${NC}  $message" ;;
-        "WARN")  echo -e "${CYAN}[$timestamp]${NC} ${YELLOW}⚠${NC}  $message" ;;
+        "INFO")  echo -e "${CYAN}[$timestamp]${NC} ${BLUE}ℹ${NC}  $message" >&2 ;;
+        "OK")    echo -e "${CYAN}[$timestamp]${NC} ${GREEN}✓${NC}  $message" >&2 ;;
+        "WARN")  echo -e "${CYAN}[$timestamp]${NC} ${YELLOW}⚠${NC}  $message" >&2 ;;
         "ERROR") echo -e "${CYAN}[$timestamp]${NC} ${RED}✗${NC}  $message" >&2 ;;
-        "STEP")  echo -e "${CYAN}[$timestamp]${NC} ${BOLD}▶${NC}  $message" ;;
+        "STEP")  echo -e "${CYAN}[$timestamp]${NC} ${BOLD}▶${NC}  $message" >&2 ;;
     esac
 }
 
