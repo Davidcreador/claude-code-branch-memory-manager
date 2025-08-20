@@ -118,8 +118,15 @@ save_memory() {
     fi
     
     local target_file="$MEMORY_DIR/$safe_branch.md"
+    local backup_dir="$MEMORY_DIR/.backups"
     local timestamp
     timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    
+    # Create backup if file already exists
+    if [[ -f "$target_file" ]]; then
+        mkdir -p "$backup_dir"
+        cp "$target_file" "$backup_dir/${safe_branch}_backup.md"
+    fi
     
     # Create enhanced memory file
     {
@@ -632,6 +639,10 @@ COMMANDS:
     status                 Show current branch and memory status
     hooks <subcommand>     Manage git hooks (status|install)
     health                 Perform system health check
+    disable                Disable automatic memory switching
+    enable                 Enable automatic memory switching
+    copy <src> <dst>       Copy memory from one branch to another
+    restore [branch]       Restore memory from automatic backup
     version                Show version information
     help                   Show this help message
 
@@ -663,16 +674,132 @@ main() {
         "status")       cmd_status ;;
         "hooks")        cmd_hooks "${2:-}" "${3:-}" ;;
         "health")       cmd_health ;;
+        "disable")      cmd_disable ;;
+        "enable")       cmd_enable ;;
+        "copy"|"cp")    cmd_copy "${2:-}" "${3:-}" ;;
+        "restore")      cmd_restore "${2:-}" ;;
         "version"|"--version"|"-v") cmd_version ;;
         "help"|"--help"|"-h"|"") print_help ;;
         *)
             echo "Error: Unknown command: $command"
             echo ""
-            echo "Available commands: save, load, list, switch, status, hooks, health, version, help"
+            echo "Available commands: save, load, list, switch, status, hooks, health, disable, enable, copy, restore, version, help"
             echo "For detailed help: $SCRIPT_NAME help"
             exit 1
             ;;
     esac
+}
+
+# Command: disable - Temporarily disable automatic memory switching
+cmd_disable() {
+    echo "Disabling automatic memory switching..."
+    
+    # Create a flag file to indicate disabled state
+    touch "$HOME/.claude-memory/.disabled"
+    
+    echo "✓ Automatic memory switching disabled"
+    echo ""
+    echo "To re-enable: $SCRIPT_NAME enable"
+}
+
+# Command: enable - Re-enable automatic memory switching
+cmd_enable() {
+    echo "Enabling automatic memory switching..."
+    
+    # Remove the flag file
+    rm -f "$HOME/.claude-memory/.disabled"
+    
+    echo "✓ Automatic memory switching enabled"
+    echo ""
+    echo "Memory will now switch automatically when you change branches"
+}
+
+# Command: copy - Copy memory from one branch to another
+cmd_copy() {
+    local source_branch="${1:-}"
+    local target_branch="${2:-}"
+    
+    if [[ -z "$source_branch" || -z "$target_branch" ]]; then
+        echo "Usage: $SCRIPT_NAME copy <source-branch> <target-branch>"
+        echo ""
+        echo "Example: $SCRIPT_NAME copy main feature/new-branch"
+        exit 1
+    fi
+    
+    # Sanitize branch names
+    local safe_source
+    local safe_target
+    safe_source=$(sanitize_branch_name "$source_branch")
+    safe_target=$(sanitize_branch_name "$target_branch")
+    
+    local source_file="$MEMORY_DIR/$safe_source.md"
+    local target_file="$MEMORY_DIR/$safe_target.md"
+    
+    # Check if source exists
+    if [[ ! -f "$source_file" ]]; then
+        echo "Error: No memory found for branch: $source_branch"
+        echo ""
+        echo "Available branches with memories:"
+        cmd_list
+        exit 1
+    fi
+    
+    # Create memory directory if needed
+    mkdir -p "$MEMORY_DIR"
+    
+    # Copy the memory
+    cp "$source_file" "$target_file"
+    
+    echo "✓ Copied memory from '$source_branch' to '$target_branch'"
+    echo ""
+    echo "To load it: $SCRIPT_NAME load $target_branch"
+}
+
+# Command: restore - Restore memory from automatic backup
+cmd_restore() {
+    local branch="${1:-$(get_current_branch)}"
+    
+    # Sanitize branch name
+    local safe_branch
+    safe_branch=$(sanitize_branch_name "$branch")
+    
+    # Look for backup files
+    local backup_dir="$MEMORY_DIR/.backups"
+    local backup_file="$backup_dir/${safe_branch}_backup.md"
+    
+    if [[ ! -f "$backup_file" ]]; then
+        echo "Error: No backup found for branch: $branch"
+        echo ""
+        
+        # List available backups
+        if [[ -d "$backup_dir" ]] && [[ -n "$(ls -A "$backup_dir" 2>/dev/null)" ]]; then
+            echo "Available backups:"
+            for backup in "$backup_dir"/*_backup.md; do
+                if [[ -f "$backup" ]]; then
+                    local backup_name
+                    backup_name=$(basename "$backup" _backup.md)
+                    echo "  • $backup_name"
+                fi
+            done
+        else
+            echo "No backups available"
+        fi
+        exit 1
+    fi
+    
+    # Create a backup of current state before restoring
+    if [[ -f "$MEMORY_FILE" ]]; then
+        local timestamp
+        timestamp=$(date '+%Y%m%d_%H%M%S')
+        cp "$MEMORY_FILE" "$backup_dir/${safe_branch}_before_restore_${timestamp}.md"
+    fi
+    
+    # Restore from backup
+    cp "$backup_file" "$MEMORY_FILE"
+    
+    echo "✓ Restored memory from backup for branch: $branch"
+    echo ""
+    echo "Previous state backed up with timestamp"
 }
 
 # Execute with error handling

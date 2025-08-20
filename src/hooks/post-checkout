@@ -17,6 +17,11 @@ if [[ "${CLAUDE_MEMORY_DISABLE_HOOKS:-}" == "1" ]]; then
     exit 0
 fi
 
+# Exit early if automatic switching is disabled
+if [[ -f "$HOME/.claude-memory/.disabled" ]]; then
+    exit 0
+fi
+
 # Source the Claude Memory Manager libraries
 CLAUDE_MEMORY_HOME="${HOME}/.claude-memory"
 if [[ ! -d "$CLAUDE_MEMORY_HOME" ]]; then
