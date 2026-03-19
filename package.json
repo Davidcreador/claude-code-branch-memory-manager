@@ -1,18 +1,22 @@
 {
   "name": "claude-code-branch-memory-manager",
-  "version": "2.0.0",
-  "description": "Professional branch-specific memory management for Claude Code. Automatically switches CLAUDE.md files when you change git branches.",
-  "main": "src/bin/branch-memory",
+  "version": "3.0.0",
+  "description": "Branch-specific CLAUDE.md memory management for Claude Code. Automatically switches context when you change git branches.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "bin": {
-    "branch-memory": "src/bin/branch-memory"
+    "branch-memory": "dist/cli.js"
   },
   "scripts": {
-    "test": "./tests/test-runner.sh",
-    "install": "./install.sh",
-    "lint": "shellcheck src/**/*.sh",
-    "format": "shfmt -w src/**/*.sh",
-    "benchmark": "./benchmarks/run-benchmarks.sh",
-    "docs": "echo 'See docs/ directory for documentation'"
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "tsc --noEmit",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run clean && npm run build"
   },
   "repository": {
     "type": "git",
@@ -21,19 +25,14 @@
   "keywords": [
     "claude",
     "claude-code",
+    "claude-code-plugin",
     "git",
     "branch",
     "memory",
     "context",
+    "CLAUDE.md",
     "automation",
-    "developer-tools",
-    "workflow",
-    "productivity",
-    "ai",
-    "development",
-    "git-hooks",
-    "shell",
-    "bash"
+    "developer-tools"
   ],
   "author": {
     "name": "David Pastor",
@@ -45,25 +44,21 @@
   },
   "homepage": "https://github.com/Davidcreador/claude-code-branch-memory-manager#readme",
   "engines": {
-    "bash": ">=3.2",
-    "git": ">=2.0"
-  },
-  "os": [
-    "darwin",
-    "linux"
-  ],
-  "preferGlobal": true,
-  "directories": {
-    "doc": "docs",
-    "test": "tests",
-    "example": "examples"
+    "node": ">=18"
   },
   "files": [
-    "src/",
-    "docs/",
-    "install.sh",
+    "dist/",
+    ".claude-plugin/",
+    "hooks/",
+    "skills/",
     "README.md",
-    "LICENSE",
-    "CHANGELOG.md"
-  ]
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.0",
+    "vitest": "^2.0.0"
+  },
+  "packageManager": "yarn@4.7.0+sha512.5a0afa1d4c1d844b3447ee3319633797bcd6385d9a44be07993ae52ff4facabccafb4af5dcd1c2f9a94ac113e5e9ff56f6130431905884414229e284e37bb7c9"
 }

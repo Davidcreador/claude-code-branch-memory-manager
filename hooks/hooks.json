@@ -1,0 +1,30 @@
+{
+  "description": "Automatic branch-specific CLAUDE.md switching",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.js\" hook session-start",
+            "timeout": 10,
+            "statusMessage": "Loading branch memory..."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.js\" hook post-tool-use",
+            "timeout": 10,
+            "statusMessage": "Checking for branch switch..."
+          }
+        ]
+      }
+    ]
+  }
+}

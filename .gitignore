@@ -1,60 +1,32 @@
-# Claude Code Branch Memory Manager - Git Ignore
+# Dependencies
+node_modules/
 
-# OS generated files
+# Build output
+dist/
+
+# OS files
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
 
-# Temporary files
-*.tmp
-*.temp
-.tmp/
-.temp/
-
-# Logs
-*.log
-logs/
-*.log.*
-
-# Testing artifacts
-test-*
-/tmp/
-.test/
-
-# Development artifacts
-*.backup
-*.bak
-.dev/
-
-# IDE files
+# IDE
 .vscode/settings.json
 .vscode/launch.json
 .idea/
 
-# Build artifacts
-dist/
-build/
+# Logs
+*.log
 
-# Local configuration (but not templates)
-.claude-memory.yml
-.claude-memory-local.yml
+# Test artifacts
+coverage/
 
-# Memory files (these should stay in individual repositories)
+# Temporary files
+*.tmp
+*.temp
+
+# Local memory files (stay in individual repos)
 CLAUDE.md
-.claude/
+.claude/memories/
 
-# Installation test artifacts
-test-repo/
-test-home/
-
-# Benchmark results (but not benchmark scripts)
-benchmarks/results/*.txt
-benchmarks/results/*.json
-
-# Documentation build artifacts
-docs/build/
-docs/dist/
+# Environment
+.env
+.env.local
