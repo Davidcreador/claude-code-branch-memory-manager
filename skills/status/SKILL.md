@@ -1,6 +1,6 @@
 ---
 name: status
-description: Show the current branch memory status including active memory, saved memory, and configuration.
+description: "Show the current branch memory status including active memory, saved memory, and configuration. Use when the user asks to check memory status, view what's stored, inspect branch memory configuration, or see current memory info."
 ---
 
 # Branch Memory Status

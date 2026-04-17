@@ -1,6 +1,6 @@
 ---
 name: list
-description: List all stored branch memories with their sizes and last modified dates.
+description: "List all stored branch memories with their sizes and last modified dates. Use when the user asks to show branches, view saved memories, check what branches have stored context, or see memory usage."
 ---
 
 # List Branch Memories
