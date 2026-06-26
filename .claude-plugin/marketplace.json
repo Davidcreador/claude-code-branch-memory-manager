@@ -9,7 +9,10 @@
   "plugins": [
     {
       "name": "branch-memory",
-      "source": ".",
+      "source": {
+        "source": "npm",
+        "package": "claude-code-branch-memory-manager"
+      },
       "description": "Automatic branch-specific CLAUDE.md memory management. Switches your Claude Code context when you change git branches.",
       "author": {
         "name": "David Pastor",
