@@ -1,6 +1,6 @@
 {
   "name": "claude-code-branch-memory-manager",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "Branch-specific CLAUDE.md memory management for Claude Code. Automatically switches context when you change git branches.",
   "type": "module",
   "main": "dist/index.js",

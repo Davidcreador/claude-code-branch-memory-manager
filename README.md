@@ -18,6 +18,15 @@ Branch Memory Manager saves and loads branch-specific `CLAUDE.md` files automati
 
 ### Install as a Claude Code Plugin (Recommended)
 
+Install from the plugin marketplace inside Claude Code:
+
+```
+/plugin marketplace add Davidcreador/claude-code-branch-memory-manager
+/plugin install branch-memory@davidcreador
+```
+
+Or install the npm package and load it with `--plugin-dir`:
+
 ```bash
 # Install the npm package in your project
 npm install --save-dev claude-code-branch-memory-manager
@@ -27,11 +36,13 @@ npm install -g claude-code-branch-memory-manager
 ```
 
 Then load as a plugin:
+
 ```bash
 claude --plugin-dir ./node_modules/claude-code-branch-memory-manager
 ```
 
 Once installed, branch memory switching happens automatically:
+
 1. You run `git checkout feature/auth` inside Claude Code
 2. The plugin saves your current `CLAUDE.md` to `.claude/memories/main.md`
 3. It loads `.claude/memories/feature_auth.md` into `CLAUDE.md`
@@ -126,12 +137,14 @@ Create a `.branch-memory.json` in your repo root:
 
 ## Plugin Skills
 
-When installed as a Claude Code plugin, these skills are available:
+When installed as a Claude Code plugin, these skills are available as namespaced slash commands:
 
 - `/branch-memory:save` — Save current context
 - `/branch-memory:load` — Load a branch's context
 - `/branch-memory:status` — Show memory status
 - `/branch-memory:list` — List all memories
+
+These are [Agent Skills](https://docs.anthropic.com/en/docs/claude-code/skills): you can invoke them directly with the slash command, and Claude may also use them automatically when their description matches what you're doing.
 
 ## Tips
 

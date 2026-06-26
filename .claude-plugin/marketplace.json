@@ -1,0 +1,25 @@
+{
+  "name": "davidcreador",
+  "owner": {
+    "name": "David Pastor"
+  },
+  "metadata": {
+    "description": "Branch-specific CLAUDE.md memory management for Claude Code."
+  },
+  "plugins": [
+    {
+      "name": "branch-memory",
+      "source": ".",
+      "description": "Automatic branch-specific CLAUDE.md memory management. Switches your Claude Code context when you change git branches.",
+      "author": {
+        "name": "David Pastor",
+        "url": "https://github.com/Davidcreador"
+      },
+      "homepage": "https://github.com/Davidcreador/claude-code-branch-memory-manager#readme",
+      "repository": "https://github.com/Davidcreador/claude-code-branch-memory-manager",
+      "license": "MIT",
+      "category": "productivity",
+      "keywords": ["git", "branch", "memory", "context", "claude-code"]
+    }
+  ]
+}

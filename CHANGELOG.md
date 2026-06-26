@@ -5,9 +5,23 @@ All notable changes to Claude Code Branch Memory Manager will be documented in t
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] - 2026-06-26
+
+### Fixed
+
+- **Live context switching now actually works.** The hooks previously only swapped `CLAUDE.md` on disk. Claude Code loads `CLAUDE.md` into context at session start and does not re-read it mid-session, so automatic switching never reached the running conversation after a `git checkout`. Hooks now inject the branch memory into the live session using Claude Code's documented `hookSpecificOutput.additionalContext` mechanism:
+  - `PostToolUse` emits the new branch's memory after a detected branch switch.
+  - `SessionStart` emits a concise status line (the full body still arrives via the eagerly-loaded `CLAUDE.md`, so content is not duplicated).
+  - On-disk swapping is unchanged; this is purely additive. Output is capped at 9000 characters to stay under Claude Code's 10k inline limit.
+
+### Added
+
+- Plugin marketplace manifest (`.claude-plugin/marketplace.json`) so the plugin can be installed via `/plugin marketplace add` + `/plugin install branch-memory@davidcreador`, in addition to `--plugin-dir` and npm.
+
 ## [3.0.0] - 2026-03-18
 
 ### Changed - Complete Rewrite
+
 - **Architecture**: Rewritten from Bash to TypeScript/Node.js
 - **Distribution**: Now a Claude Code plugin with automatic hook integration
 - **Integration**: Uses Claude Code's native hooks system (SessionStart + PostToolUse) instead of git hooks
@@ -16,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Testing**: 56 tests with vitest (branch sanitization, memory operations, hook detection, config)
 
 ### Added
+
 - Claude Code plugin manifest (`.claude-plugin/plugin.json`)
 - Native Claude Code hooks for automatic memory switching (`hooks/hooks.json`)
 - Plugin skills: `/branch-memory:save`, `/branch-memory:load`, `/branch-memory:status`, `/branch-memory:list`
@@ -26,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Automatic backup before every destructive operation
 
 ### Removed
+
 - Bash scripts (entire `src/bin/`, `src/lib/`, `src/hooks/`, `src/completions/`)
 - Shell installer/uninstaller/updater (`install.sh`, `uninstall.sh`, `update.sh`)
 - Git hook files (`post-checkout`, `pre-commit`) — replaced by Claude Code native hooks
@@ -34,6 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `eval` usage and all associated security vulnerabilities
 
 ### Migration from v2.x
+
 - Install the npm package: `npm install --save-dev claude-code-branch-memory-manager`
 - Your existing `.claude/memories/` files are compatible and will be loaded as-is
 - Remove the old `~/.claude-memory/` installation directory
@@ -42,6 +59,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.0.0] - 2025-08-19
 
 ### Added
+
 - Professional architecture with modular library system
 - Cross-platform installer
 - Bash 3.2+ compatibility layer
@@ -50,6 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0] - 2025-04-01
 
 ### Added
+
 - Initial release
 - Branch-specific CLAUDE.md file management
 - Git hook integration (post-checkout, pre-commit)

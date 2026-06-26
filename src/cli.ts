@@ -30,7 +30,7 @@ function getVersion(): string {
     const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as { version: string };
     return pkg.version;
   } catch {
-    return "3.0.0";
+    return "3.1.0";
   }
 }
 
@@ -83,6 +83,35 @@ function requireValidBranch(branch: string): void {
   }
 }
 
+/** Load memory for the current branch. Used by `load --auto` in hook contexts. */
+async function loadAutoCommand(): Promise<void> {
+  const { getCurrentBranch } = await import("./core/branch.js");
+  try {
+    const branch = await getCurrentBranch();
+    await loadCommand(branch);
+  } catch {
+    // Silent fail in auto mode — no memory to load is fine
+  }
+}
+
+/** Dispatch a Claude Code hook event to its handler. */
+async function runHookEvent(hookEvent: string | undefined): Promise<void> {
+  if (!hookEvent) {
+    console.error("Error: hook event name required");
+    process.exit(1);
+  }
+  if (hookEvent === "session-start") {
+    const { handleSessionStart } = await import("./hooks/session-start.js");
+    await handleSessionStart();
+  } else if (hookEvent === "post-tool-use") {
+    const { handlePostToolUse } = await import("./hooks/post-tool-use.js");
+    await handlePostToolUse();
+  } else {
+    console.error(`Unknown hook event: ${hookEvent}`);
+    process.exit(1);
+  }
+}
+
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
 
@@ -108,13 +137,7 @@ async function main(): Promise<void> {
     case "load":
       if (!positional[1]) {
         if (args.includes("--auto")) {
-          const { getCurrentBranch } = await import("./core/branch.js");
-          try {
-            const branch = await getCurrentBranch();
-            await loadCommand(branch);
-          } catch {
-            // Silent fail in auto mode — no memory to load is fine
-          }
+          await loadAutoCommand();
         } else {
           console.error("Error: branch name required");
           console.error("Usage: branch-memory load <branch>");
@@ -171,24 +194,9 @@ async function main(): Promise<void> {
       await initCommand();
       break;
 
-    case "hook": {
-      const hookEvent = positional[1];
-      if (!hookEvent) {
-        console.error("Error: hook event name required");
-        process.exit(1);
-      }
-      if (hookEvent === "session-start") {
-        const { handleSessionStart } = await import("./hooks/session-start.js");
-        await handleSessionStart();
-      } else if (hookEvent === "post-tool-use") {
-        const { handlePostToolUse } = await import("./hooks/post-tool-use.js");
-        await handlePostToolUse();
-      } else {
-        console.error(`Unknown hook event: ${hookEvent}`);
-        process.exit(1);
-      }
+    case "hook":
+      await runHookEvent(positional[1]);
       break;
-    }
 
     case "version":
     case "--version":
