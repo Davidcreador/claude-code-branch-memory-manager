@@ -13,6 +13,18 @@
         ]
       }
     ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.js\" hook user-prompt-submit",
+            "timeout": 10,
+            "statusMessage": "Checking active branch..."
+          }
+        ]
+      }
+    ],
     "PostToolUse": [
       {
         "matcher": "Bash",
@@ -22,6 +34,18 @@
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.js\" hook post-tool-use",
             "timeout": 10,
             "statusMessage": "Checking for branch switch..."
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/dist/cli.js\" hook session-end",
+            "timeout": 10,
+            "statusMessage": "Saving branch memory..."
           }
         ]
       }

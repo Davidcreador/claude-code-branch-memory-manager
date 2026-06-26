@@ -381,6 +381,25 @@ export class MemoryManager {
   // exists
   // -------------------------------------------------------------------------
 
+  /** Path to the file tracking the last active branch (for external-switch detection) */
+  get activeBranchStatePath(): string {
+    return join(this.memoryDir, ".active-branch");
+  }
+
+  /** Read the last active branch recorded by the hooks, or null if none. */
+  async getActiveBranchState(): Promise<string | null> {
+    const content = await readFileSafe(this.activeBranchStatePath);
+    if (content === null) return null;
+    const trimmed = content.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  /** Record the active branch so we can detect out-of-band switches later. */
+  async setActiveBranchState(branch: string): Promise<void> {
+    await ensureDir(this.memoryDir);
+    await atomicWrite(this.activeBranchStatePath, branch.trim() + "\n");
+  }
+
   /**
    * Check if a branch has a saved memory.
    */

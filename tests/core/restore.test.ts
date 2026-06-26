@@ -15,6 +15,8 @@ function defaultConfig(): Config {
     memoryDir: ".claude/memories",
     memoryFileName: "CLAUDE.md",
     autoSaveOnSwitch: true,
+    autoSaveOnSessionEnd: true,
+    watchExternalSwitch: true,
     fallbackToDefault: true,
     fallbackBranches: ["main", "master", "develop"],
   };

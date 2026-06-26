@@ -106,6 +106,14 @@ async function runHookEvent(hookEvent: string | undefined): Promise<void> {
   } else if (hookEvent === "post-tool-use") {
     const { handlePostToolUse } = await import("./hooks/post-tool-use.js");
     await handlePostToolUse();
+  } else if (hookEvent === "session-end") {
+    const { handleSessionEnd } = await import("./hooks/session-end.js");
+    await handleSessionEnd();
+  } else if (hookEvent === "user-prompt-submit") {
+    const { handleUserPromptSubmit } = await import(
+      "./hooks/user-prompt-submit.js"
+    );
+    await handleUserPromptSubmit();
   } else {
     console.error(`Unknown hook event: ${hookEvent}`);
     process.exit(1);

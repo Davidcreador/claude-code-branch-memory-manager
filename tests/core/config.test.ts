@@ -106,8 +106,8 @@ describe("loadConfig", () => {
 
     const config = await loadConfig(tempDir);
     expect(config.memoryDir).toBe("safe/path");
-    expect((config as Record<string, unknown>)["unknownKey"]).toBeUndefined();
-    expect((config as Record<string, unknown>)["constructor"]).not.toBe("evil");
+    expect((config as unknown as Record<string, unknown>)["unknownKey"]).toBeUndefined();
+    expect((config as unknown as Record<string, unknown>)["constructor"]).not.toBe("evil");
   });
 
   // Path traversal validation

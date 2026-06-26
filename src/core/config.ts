@@ -23,6 +23,10 @@ export interface Config {
   fallbackToDefault: boolean;
   /** Default branches to try as fallback, in order */
   fallbackBranches: string[];
+  /** Automatically save the active memory when a Claude Code session ends */
+  autoSaveOnSessionEnd: boolean;
+  /** On each prompt, detect branch switches made outside Claude Code (e.g. another terminal) */
+  watchExternalSwitch: boolean;
 }
 
 const DEFAULT_CONFIG: Config = {
@@ -31,6 +35,8 @@ const DEFAULT_CONFIG: Config = {
   autoSaveOnSwitch: true,
   fallbackToDefault: true,
   fallbackBranches: ["main", "master", "develop"],
+  autoSaveOnSessionEnd: true,
+  watchExternalSwitch: true,
 };
 
 /** Known config keys — only these are accepted from file config */
@@ -40,6 +46,8 @@ const KNOWN_KEYS = new Set<keyof Config>([
   "autoSaveOnSwitch",
   "fallbackToDefault",
   "fallbackBranches",
+  "autoSaveOnSessionEnd",
+  "watchExternalSwitch",
 ]);
 
 /**
@@ -107,6 +115,12 @@ export async function loadConfig(repoRoot?: string): Promise<Config> {
       .map((b) => b.trim())
       .filter(Boolean);
   }
+  if (env["BRANCH_MEMORY_AUTO_SAVE_ON_END"] !== undefined) {
+    config.autoSaveOnSessionEnd = env["BRANCH_MEMORY_AUTO_SAVE_ON_END"] !== "false";
+  }
+  if (env["BRANCH_MEMORY_WATCH_EXTERNAL"] !== undefined) {
+    config.watchExternalSwitch = env["BRANCH_MEMORY_WATCH_EXTERNAL"] !== "false";
+  }
 
   // Runtime type validation — reset to defaults if types are wrong
   if (typeof config.memoryDir !== "string") {
@@ -122,6 +136,12 @@ export async function loadConfig(repoRoot?: string): Promise<Config> {
   }
   if (typeof config.fallbackToDefault !== "boolean") {
     config.fallbackToDefault = Boolean(config.fallbackToDefault);
+  }
+  if (typeof config.autoSaveOnSessionEnd !== "boolean") {
+    config.autoSaveOnSessionEnd = Boolean(config.autoSaveOnSessionEnd);
+  }
+  if (typeof config.watchExternalSwitch !== "boolean") {
+    config.watchExternalSwitch = Boolean(config.watchExternalSwitch);
   }
   if (!Array.isArray(config.fallbackBranches)) {
     logger.warn(`fallbackBranches has wrong type (${typeof config.fallbackBranches}), using default`);

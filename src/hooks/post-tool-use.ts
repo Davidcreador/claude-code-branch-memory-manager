@@ -237,6 +237,9 @@ export async function handlePostToolUse(): Promise<void> {
     } catch {
       logger.debug(`No memory found for '${currentBranch}'`);
     }
+
+    // Keep the external-switch tracker in sync with this in-session switch.
+    await manager.setActiveBranchState(currentBranch);
   } catch (err) {
     // Hook errors should never block Claude Code
     logger.debug(`PostToolUse hook error: ${err}`);

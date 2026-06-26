@@ -49,6 +49,10 @@ export async function handleSessionStart(): Promise<void> {
           `${config.memoryDir}/ for git branch '${branch}'.`,
       );
     }
+
+    // Record the active branch so UserPromptSubmit can later detect
+    // out-of-band switches without re-injecting on every prompt.
+    await manager.setActiveBranchState(branch);
     // If no memory exists, don't create one — let the user decide
   } catch (err) {
     // Hook errors should never block Claude Code

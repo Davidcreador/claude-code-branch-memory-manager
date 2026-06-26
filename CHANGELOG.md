@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Plugin marketplace manifest (`.claude-plugin/marketplace.json`) so the plugin can be installed via `/plugin marketplace add` + `/plugin install branch-memory@davidcreador`, in addition to `--plugin-dir` and npm.
+- **`SessionEnd` hook** — automatically saves the active `CLAUDE.md` back to the current branch when a Claude Code session ends. Controlled by `autoSaveOnSessionEnd` (default `true`).
+- **`UserPromptSubmit` hook** — detects branch switches made outside Claude Code (e.g. in another terminal) and swaps/injects the correct memory. Tracked via a `.active-branch` state file so it is a cheap no-op when the branch is unchanged. Controlled by `watchExternalSwitch` (default `true`).
+- CI hardening: GitHub Actions are now pinned to commit SHAs.
 
 ## [3.0.0] - 2026-03-18
 

@@ -102,10 +102,12 @@ your-repo/
 
 ### Plugin Integration
 
-When installed as a Claude Code plugin, two hooks handle automatic switching:
+When installed as a Claude Code plugin, four hooks handle automatic switching. Each one injects the active branch memory into the **live** session via Claude Code's `additionalContext` mechanism (writing the file on disk alone does not update an already-loaded context):
 
 - **`SessionStart`** — Loads the correct branch memory when Claude Code starts
 - **`PostToolUse` (Bash)** — Detects `git checkout` / `git switch` commands and swaps memories
+- **`UserPromptSubmit`** — Detects branch switches made *outside* Claude Code (e.g. another terminal) and swaps memories. Cheap no-op when the branch hasn't changed, so it does not bloat every prompt
+- **`SessionEnd`** — Saves the active `CLAUDE.md` back to the current branch when the session ends
 
 ### Fallback Behavior
 
@@ -120,6 +122,8 @@ Create a `.branch-memory.json` in your repo root:
   "memoryDir": ".claude/memories",
   "memoryFileName": "CLAUDE.md",
   "autoSaveOnSwitch": true,
+  "autoSaveOnSessionEnd": true,
+  "watchExternalSwitch": true,
   "fallbackToDefault": true,
   "fallbackBranches": ["main", "master", "develop"]
 }
@@ -131,7 +135,9 @@ Create a `.branch-memory.json` in your repo root:
 |----------|-------------|
 | `BRANCH_MEMORY_DIR` | Memory storage directory |
 | `BRANCH_MEMORY_FILE` | Memory file name |
-| `BRANCH_MEMORY_AUTO_SAVE` | Enable/disable auto-save (`true`/`false`) |
+| `BRANCH_MEMORY_AUTO_SAVE` | Enable/disable auto-save on switch (`true`/`false`) |
+| `BRANCH_MEMORY_AUTO_SAVE_ON_END` | Enable/disable auto-save on session end (`true`/`false`) |
+| `BRANCH_MEMORY_WATCH_EXTERNAL` | Enable/disable detection of external branch switches (`true`/`false`) |
 | `BRANCH_MEMORY_FALLBACK` | Enable/disable fallback (`true`/`false`) |
 | `BRANCH_MEMORY_FALLBACK_BRANCHES` | Comma-separated fallback branches |
 
