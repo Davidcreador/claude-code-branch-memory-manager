@@ -9,7 +9,7 @@ import { getCurrentBranch, getRepoRoot, isGitRepo } from "../core/branch.js";
 import { loadConfig } from "../core/config.js";
 import { MemoryManager } from "../core/memory-manager.js";
 import { logger, setLogLevel } from "../utils/logger.js";
-import { parseHookInput } from "./hook-utils.js";
+import { emitAdditionalContext, parseHookInput } from "./hook-utils.js";
 
 export async function handleSessionStart(): Promise<void> {
   // Hooks should be quiet by default
@@ -38,6 +38,16 @@ export async function handleSessionStart(): Promise<void> {
     if (await manager.exists(branch)) {
       await manager.load(branch);
       logger.debug(`Loaded memory for branch '${branch}'`);
+
+      // The disk swap above puts the branch memory into CLAUDE.md, which Claude
+      // Code eagerly loads at session start. Emit a concise factual status note
+      // (not the full content) so the active branch is unambiguous without
+      // duplicating the eagerly-loaded CLAUDE.md body.
+      emitAdditionalContext(
+        "SessionStart",
+        `Branch memory active: CLAUDE.md is loaded from ` +
+          `${config.memoryDir}/ for git branch '${branch}'.`,
+      );
     }
     // If no memory exists, don't create one — let the user decide
   } catch (err) {

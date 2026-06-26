@@ -13,8 +13,9 @@ import {
 } from "../core/branch.js";
 import { loadConfig } from "../core/config.js";
 import { MemoryManager } from "../core/memory-manager.js";
+import { readFileSafe } from "../utils/fs.js";
 import { logger, setLogLevel } from "../utils/logger.js";
-import { parseHookInput } from "./hook-utils.js";
+import { emitAdditionalContext, parseHookInput } from "./hook-utils.js";
 
 /**
  * Git flags that consume the next argument (so the next token is NOT a branch name).
@@ -214,10 +215,25 @@ export async function handlePostToolUse(): Promise<void> {
       }
     }
 
-    // Load memory for the new branch
+    // Load memory for the new branch and inject it into the LIVE session.
+    //
+    // Swapping CLAUDE.md on disk alone is not enough: Claude Code loads
+    // CLAUDE.md into context at session start and does NOT re-read it when the
+    // file changes mid-session. To actually update the running conversation we
+    // emit the branch memory as `additionalContext`, the documented mechanism
+    // for surfacing dynamic state after a tool call.
     try {
       await manager.load(currentBranch);
       logger.debug(`Loaded memory for '${currentBranch}'`);
+
+      const active = await readFileSafe(manager.memoryFilePath);
+      if (active && active.trim()) {
+        emitAdditionalContext(
+          "PostToolUse",
+          `Git branch is now '${currentBranch}'. The saved CLAUDE.md memory ` +
+            `for this branch is now active:\n\n${active.trim()}`,
+        );
+      }
     } catch {
       logger.debug(`No memory found for '${currentBranch}'`);
     }
